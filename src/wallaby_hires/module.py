@@ -5,6 +5,10 @@ from astropy.table import Table
 PROJECT_NAME = "wallaby_hires"
 
 
+def ping() -> None:
+    print("wallaby_hires pong")
+
+
 def discover(source_identifier: str) -> Table:
     return Table()
 
