@@ -2,15 +2,20 @@ from typing import Any
 
 from astropy.table import Table
 
+from app.core.archive.adapters.casda import CASDA_TAP_URL, query as casda_query
+
 PROJECT_NAME = "wallaby_hires"
 
+# Query template for visibility files
+VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{source_identifier}%'"
 
 def ping() -> None:
     print("wallaby_hires pong")
-
-
+    
 def discover(source_identifier: str) -> Table:
-    return Table()
+    query = VISIBILITY_QUERY_TEMPLATE.format(source_identifier=source_identifier)
+    results = casda_query(query, tap_url=CASDA_TAP_URL)
+    return results
 
 
 def stage(casda_client: Any, query_results: Table) -> tuple[dict[str, str], dict[str, str]]:
