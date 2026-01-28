@@ -1,8 +1,11 @@
+import logging
 from typing import Any
 
 from astropy.table import Table
 
 from app.core.archive.adapters.casda import CASDA_TAP_URL, query as casda_query
+
+logger = logging.getLogger(__name__)
 
 PROJECT_NAME = "wallaby_hires"
 
@@ -11,11 +14,17 @@ VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{so
 
 def ping() -> None:
     print("wallaby_hires pong")
-    
+
 def discover(source_identifier: str) -> Table:
     query = VISIBILITY_QUERY_TEMPLATE.format(source_identifier=source_identifier)
-    results = casda_query(query, tap_url=CASDA_TAP_URL)
-    return results
+    logger.info(f"Querying CASDA for source: {source_identifier}")
+    try:
+        results = casda_query(query, tap_url=CASDA_TAP_URL)
+        logger.info(f"Found {len(results)} results for {source_identifier}")
+        return results
+    except Exception as e:
+        logger.error(f"Error querying CASDA for {source_identifier}: {e}")
+        raise
 
 
 def stage(casda_client: Any, query_results: Table) -> tuple[dict[str, str], dict[str, str]]:
@@ -28,4 +37,5 @@ def prepare_metadata(
     data_url_by_scan_id: dict[str, str] | None = None,
     checksum_url_by_scan_id: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
+    """Prepare metadata for datasets."""
     return []
