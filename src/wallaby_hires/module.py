@@ -1,14 +1,13 @@
 import logging
 import re
 from typing import Any, Optional
-from urllib.parse import parse_qs, unquote, urlparse
 
-import numpy as np
 from astropy.table import Table
 
 from app.core.archive.adapters.casda import CASDA_TAP_URL, _extract_scan_id, query as casda_query
 from app.core.archive.adapters.vizier import VIZIER_TAP_URL, query as vizier_query
-from app.core.utils.astro import degrees_to_dms, degrees_to_hms
+from app.core.archive.discovery import extract_filename_from_url
+from app.core.utils.astro import degrees_to_dms, degrees_to_hms, to_python_value
 
 logger = logging.getLogger(__name__)
 
@@ -32,32 +31,18 @@ def ping() -> None:
 
 def discover(source_identifier: str) -> Table:
     query = VISIBILITY_QUERY_TEMPLATE.format(source_identifier=source_identifier)
-    logger.info(f"Querying CASDA for source: {source_identifier}")
+    logger.info(f"Q: {source_identifier}")
     try:
         results = casda_query(query, tap_url=CASDA_TAP_URL)
-        logger.info(f"Found {len(results)} results for {source_identifier}")
+        logger.info(f"R: {len(results)} results for {source_identifier}")
         return results
     except Exception as e:
-        logger.error(f"Error querying CASDA for {source_identifier}: {e}")
+        logger.error(f"E: {source_identifier}: {e}")
         raise
 
 
 def stage(casda_client: Any, query_results: Table) -> tuple[dict[str, str], dict[str, str]]:
     return {}, {}
-
-
-def _extract_filename_from_url(url: str) -> Optional[str]:
-    """Extract filename from a URL (handles query parameters)."""
-    decoded_url = unquote(url)
-    parsed = urlparse(decoded_url)
-    query_params = parse_qs(parsed.query)
-    response_disposition = query_params.get("response-content-disposition", [])
-    for value in response_disposition:
-        match = re.search(r'filename="?([^";]+)"?', value)
-        if match:
-            return match.group(1)
-    filename = parsed.path.split("/")[-1]
-    return filename or None
 
 
 def query_ra_dec_vsys(source_identifier: str) -> Optional[dict[str, Any]]:
@@ -69,7 +54,8 @@ def query_ra_dec_vsys(source_identifier: str) -> Optional[dict[str, Any]]:
     """
     # Extract the part after "HIPASS" if present (case-insensitive).
     #
-    # We want Vizier's HIPASS table keys like "J1318-21"
+    # We want Vizier's HIPASS table keys like "J1318-21" rather than full
+    # source identifiers like "HIPASSJ1318-21".
     s = source_identifier.strip()
     m = re.search(r"hipass", s, flags=re.IGNORECASE)
     if m:
@@ -88,14 +74,10 @@ def query_ra_dec_vsys(source_identifier: str) -> Optional[dict[str, Any]]:
             logger.warning(f"No RA/DEC/VSys data found for {source_identifier}")
             return None
 
-        # NumPy to Python types
-        ra_deg_raw = results["RAJ2000"][0]
-        dec_deg_raw = results["DEJ2000"][0]
-        vsys_raw = results["VSys"][0]
-
-        ra_deg = ra_deg_raw.item() if hasattr(ra_deg_raw, "item") else float(ra_deg_raw)
-        dec_deg = dec_deg_raw.item() if hasattr(dec_deg_raw, "item") else float(dec_deg_raw)
-        vsys = vsys_raw.item() if hasattr(vsys_raw, "item") else float(vsys_raw)
+        # Extract values and convert NumPy types to native Python types
+        ra_deg = to_python_value(results["RAJ2000"][0])
+        dec_deg = to_python_value(results["DEJ2000"][0])
+        vsys = to_python_value(results["VSys"][0])
 
         logger.info(f"Retrieved RA={ra_deg}, DEC={dec_deg}, VSys={vsys} for {source_identifier}")
         ra_h, ra_m, ra_s = degrees_to_hms(ra_deg)
@@ -114,9 +96,9 @@ def query_ra_dec_vsys(source_identifier: str) -> Optional[dict[str, Any]]:
             "ra_degrees": ra_deg,
             "dec_degrees": dec_deg,
             "vsys": vsys,
-            "ra_string": ra_string,
-            "dec_string": dec_string,
-            "ra_hms": (ra_h, ra_m, ra_s),
+            "ra_string": ra_string, # what will be used in the workflow
+            "dec_string": dec_string, # what will be used in the workflow
+            "ra_hms": (ra_h, ra_m, ra_s), # what will be used in the workflow
             "dec_dms": (dec_d, dec_m, dec_s),
         }
     except Exception as e:
@@ -156,10 +138,10 @@ def prepare_metadata(
     include_evaluation_files: bool = True,
     include_ra_dec_vsys: bool = True,
 ) -> list[dict[str, Any]]:
-    """Prepare metadata for datasets."""
+    """Prepare metadata from CASDA query results."""
     metadata_list = []
 
-    # Start the RA/DEC/VSys
+    # Query RA/DEC/VSys from Vizier (once per source, not per dataset)
     ra_dec_vsys_data = None
     if include_ra_dec_vsys:
         logger.info(f"Querying RA/DEC/VSys for source: {source_identifier}")
@@ -170,10 +152,10 @@ def prepare_metadata(
                 f"DEC={ra_dec_vsys_data['dec_string']}, VSys={ra_dec_vsys_data['vsys']}"
             )
 
-    # # Extract filenames from query results if staged
+    # Extract filenames from query results
     # filenames = query_results["filename"] if "filename" in query_results.colnames else []
     filenames = []
-
+    # Extract other useful metadata if available
     obs_ids = query_results["obs_id"] if "obs_id" in query_results.colnames else []
     obs_publisher_dids = (
         query_results["obs_publisher_did"] if "obs_publisher_did" in query_results.colnames else []
@@ -184,14 +166,14 @@ def prepare_metadata(
     ]
     sbid_list = []
     for obs_id in obs_ids:
-        # obs_id (format: "ASKAP-12345")
+        # Extract SBID from obs_id (format: "ASKAP-12345")
         if isinstance(obs_id, str) and "ASKAP-" in obs_id:
             sbid = obs_id.replace("ASKAP-", "")
             sbid_list.append(int(sbid) if sbid.isdigit() else None)
         else:
             sbid_list.append(None)
 
-    # Get evaluation files for each unique SBID (largest)
+    # Get evaluation files for each unique SBID (if requested)
     sbid_to_eval_file = {}
     if include_evaluation_files:
         unique_sbids = {sbid for sbid in sbid_list if sbid is not None}
@@ -226,7 +208,7 @@ def prepare_metadata(
         #     checksum_url_by_scan_id.get(scan_id) if scan_id and checksum_url_by_scan_id else None
         # )
         # if staged_url:
-        #     staged_filename = _extract_filename_from_url(staged_url)
+        #     staged_filename = extract_filename_from_url(staged_url)
         #     if staged_filename and staged_filename != filename:
         #         logger.warning(
         #             "Staged URL filename mismatch for scan id %s: expected %s, got %s",
@@ -235,7 +217,7 @@ def prepare_metadata(
         #             staged_filename,
         #         )
         # if checksum_url:
-        #     checksum_filename = _extract_filename_from_url(checksum_url)
+        #     checksum_filename = extract_filename_from_url(checksum_url)
         #     if checksum_filename:
         #         base_checksum = checksum_filename.removesuffix(".checksum")
         #         if base_checksum != filename:
@@ -272,22 +254,10 @@ def prepare_metadata(
             )
 
         # Add any additional columns from query results
-       # might be a way to convert the astropy table using pandas or something instead of this
-        # Quick fix for now to get the thing to start spitting out some data
         for colname in query_results.colnames:
             if colname not in ["filename", "obs_id"]:
                 try:
-                    value = query_results[colname][i]
-                    # Convert NumPy types to native so we can keep it in a json
-                    if hasattr(value, "item"):  # NumPy scalar (int32, float64, etc.)
-                        value = value.item()  # Converts to native Python int/float
-                    elif isinstance(value, np.ndarray):
-                        value = value.tolist()  # Convert arrays to lists
-                    elif isinstance(value, (np.integer, np.floating)):
-                        value = float(value) if isinstance(value, np.floating) else int(value)
-                    elif isinstance(value, (np.str_, np.bytes_)):
-                        value = str(value)
-                    # value is now a native Python type (int, float, str, list, etc.)
+                    value = to_python_value(query_results[colname][i])
                     dataset_metadata[colname.lower()] = value
                 except (IndexError, KeyError):
                     pass
@@ -295,8 +265,6 @@ def prepare_metadata(
         metadata_list.append(dataset_metadata)
 
     return metadata_list
-
-
 """
 misc. og-funcs from wallaby-hires
 - Visibility query: 92, 797-819 (tap_query_filename_visibility)
