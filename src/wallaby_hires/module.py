@@ -137,8 +137,8 @@ def prepare_metadata(
     checksum_url_by_scan_id: dict[str, str] | None = None,
     include_evaluation_files: bool = True,
     include_ra_dec_vsys: bool = True,
-) -> list[dict[str, Any]]:
-    """Prepare metadata from CASDA query results."""
+) -> tuple[list[dict[str, Any]], dict[str, bool]]:
+    """Prepare metadata from CASDA query results. Returns (metadata_list, discovery_flags)."""
     metadata_list = []
 
     # Query RA/DEC/VSys from Vizier (once per source, not per dataset)
@@ -264,7 +264,12 @@ def prepare_metadata(
 
         metadata_list.append(dataset_metadata)
 
-    return metadata_list
+    discovery_flags = (
+        {"ra_dec_vsys_complete": ra_dec_vsys_data is not None} if include_ra_dec_vsys else {}
+    )
+    return (metadata_list, discovery_flags)
+
+
 """
 misc. og-funcs from wallaby-hires
 - Visibility query: 92, 797-819 (tap_query_filename_visibility)
