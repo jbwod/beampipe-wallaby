@@ -153,8 +153,9 @@ def prepare_metadata(
             )
 
     # Extract filenames from query results
-    # filenames = query_results["filename"] if "filename" in query_results.colnames else []
-    filenames = []
+    filenames = query_results["filename"] if "filename" in query_results.colnames else []
+    if len(filenames) == 0:
+        logger.warning("No filename column values found in query results for %s", source_identifier)
     # Extract other useful metadata if available
     obs_ids = query_results["obs_id"] if "obs_id" in query_results.colnames else []
     obs_publisher_dids = (
