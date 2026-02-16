@@ -4,14 +4,15 @@ from typing import Any, Optional
 
 from astropy.table import Table
 
-from app.core.archive.adapters.casda import CASDA_TAP_URL, _extract_scan_id, query as casda_query
-from app.core.archive.adapters.vizier import VIZIER_TAP_URL, query as vizier_query
+from app.core.archive.adapters import get_adapter, list_adapter_names
+from app.core.archive.adapters.casda import _extract_scan_id
 from app.core.archive.discovery import extract_filename_from_url
 from app.core.utils.astro import degrees_to_dms, degrees_to_hms, to_python_value
 
 logger = logging.getLogger(__name__)
 
 PROJECT_NAME = "wallaby_hires"
+REQUIRED_ADAPTERS = ["casda", "vizier"]
 
 # Query template for visibility files
 VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{source_identifier}%'"
@@ -29,11 +30,30 @@ def ping() -> None:
     print("wallaby_hires pong")
 
 
-def discover(source_identifier: str) -> Table:
+def _query_with_adapter(
+    adapter_name: str,
+    query: str,
+    adapters: dict[str, Any] | None = None,
+) -> Table:
+    if adapters and adapter_name in adapters:
+        return adapters[adapter_name].query(query)
+    adapter = get_adapter(adapter_name)
+    if adapter is None:
+        raise ValueError(
+            f"Adapter '{adapter_name}' not found. Available: {list_adapter_names()}"
+        )
+    return adapter.query(query)
+
+
+def discover(source_identifier: str, adapters: dict[str, Any] | None = None) -> Table:
     query = VISIBILITY_QUERY_TEMPLATE.format(source_identifier=source_identifier)
     logger.info(f"Q: {source_identifier}")
     try:
-        results = casda_query(query, tap_url=CASDA_TAP_URL)
+        results = _query_with_adapter(
+            adapter_name="casda",
+            query=query,
+            adapters=adapters,
+        )
         logger.info(f"R: {len(results)} results for {source_identifier}")
         return results
     except Exception as e:
@@ -45,7 +65,10 @@ def stage(casda_client: Any, query_results: Table) -> tuple[dict[str, str], dict
     return {}, {}
 
 
-def query_ra_dec_vsys(source_identifier: str) -> Optional[dict[str, Any]]:
+def query_ra_dec_vsys(
+    source_identifier: str,
+    adapters: dict[str, Any] | None = None,
+) -> Optional[dict[str, Any]]:
     """Query Vizier TAP for RA, DEC, and VSys from HIPASS catalog.
     
     (tap_query_RA_DEC_VSYS)
@@ -67,7 +90,11 @@ def query_ra_dec_vsys(source_identifier: str) -> Optional[dict[str, Any]]:
     logger.info(f"Executing RA/DEC/VSys query: {query}")
 
     try:
-        results = vizier_query(query, tap_url=VIZIER_TAP_URL)
+        results = _query_with_adapter(
+            adapter_name="vizier",
+            query=query,
+            adapters=adapters,
+        )
         logger.info(f"RA/DEC/VSys query returned {len(results)} results")
 
         if len(results) == 0:
@@ -106,16 +133,22 @@ def query_ra_dec_vsys(source_identifier: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def query_sbid_evaluation(sbid: int) -> Table:
+def query_sbid_evaluation(sbid: int, adapters: dict[str, Any] | None = None) -> Table:
     """Query CASDA for evaluation files by SBID."""
     query = SBID_EVALUATION_QUERY_TEMPLATE.format(sbid=str(sbid))
-    return casda_query(query, tap_url=CASDA_TAP_URL)
+    return _query_with_adapter(
+        adapter_name="casda",
+        query=query,
+        adapters=adapters,
+    )
 
 
-def get_evaluation_file_for_sbid(sbid: int) -> Optional[str]:
+def get_evaluation_file_for_sbid(
+    sbid: int, adapters: dict[str, Any] | None = None
+) -> Optional[str]:
     """Get the evaluation file for a given SBID (largest file by size)."""
     try:
-        eval_results = query_sbid_evaluation(sbid)
+        eval_results = query_sbid_evaluation(sbid, adapters=adapters)
         if len(eval_results) == 0:
             return None
         if "filename" in eval_results.colnames and "filesize" in eval_results.colnames:
@@ -137,6 +170,7 @@ def prepare_metadata(
     checksum_url_by_scan_id: dict[str, str] | None = None,
     include_evaluation_files: bool = True,
     include_ra_dec_vsys: bool = True,
+    adapters: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, bool]]:
     """Prepare metadata from CASDA query results. Returns (metadata_list, discovery_flags)."""
     metadata_list = []
@@ -145,7 +179,7 @@ def prepare_metadata(
     ra_dec_vsys_data = None
     if include_ra_dec_vsys:
         logger.info(f"Querying RA/DEC/VSys for source: {source_identifier}")
-        ra_dec_vsys_data = query_ra_dec_vsys(source_identifier)
+        ra_dec_vsys_data = query_ra_dec_vsys(source_identifier, adapters=adapters)
         if ra_dec_vsys_data:
             logger.info(
                 f"Source coordinates: RA={ra_dec_vsys_data['ra_string']}, "
@@ -180,7 +214,7 @@ def prepare_metadata(
         unique_sbids = {sbid for sbid in sbid_list if sbid is not None}
         logger.info(f"Querying evaluation files for {len(unique_sbids)} unique SBIDs...")
         for sbid in unique_sbids:
-            eval_file = get_evaluation_file_for_sbid(sbid)
+            eval_file = get_evaluation_file_for_sbid(sbid, adapters=adapters)
             if eval_file:
                 sbid_to_eval_file[sbid] = eval_file
                 logger.info(f"SBID {sbid}: evaluation file = {eval_file}")
