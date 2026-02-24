@@ -1,10 +1,11 @@
 import logging
 import re
-from typing import Any, Optional, TypedDict
+from typing import Any, Optional
 
 from astropy.table import Table
 
 from app.core.archive.adapters import get_adapter, list_adapter_names
+from app.core.projects.contracts import DiscoverBundle, get_discover_enrichment
 from app.core.archive.adapters.casda import _extract_scan_id
 from app.core.utils.astro import degrees_to_dms, degrees_to_hms, to_python_value
 
@@ -23,12 +24,6 @@ SBID_EVALUATION_QUERY_TEMPLATE = "SELECT * FROM casda.observation_evaluation_fil
 RA_DEC_VSYS_QUERY_TEMPLATE = (
     'SELECT RAJ2000, DEJ2000, VSys FROM "J/AJ/128/16/table2" WHERE HIPASS LIKE \'{source_name}\''
 )
-
-
-class DiscoverBundle(TypedDict):
-    query_results: Table
-    ra_dec_vsys: dict[str, Any] | None
-    sbid_to_eval_file: dict[int, str]
 
 
 def ping() -> None:
@@ -64,8 +59,10 @@ def discover(source_identifier: str, adapters: dict[str, Any] | None = None) -> 
         if len(query_results) == 0:
             return {
                 "query_results": query_results,
-                "ra_dec_vsys": None,
-                "sbid_to_eval_file": {},
+                "enrichments": {
+                    "ra_dec_vsys": None,
+                    "sbid_to_eval_file": {},
+                },
             }
 
         # query source-level enrichment once
@@ -94,8 +91,10 @@ def discover(source_identifier: str, adapters: dict[str, Any] | None = None) -> 
 
         return {
             "query_results": query_results,
-            "ra_dec_vsys": ra_dec_vsys_data,
-            "sbid_to_eval_file": sbid_to_eval_file,
+            "enrichments": {
+                "ra_dec_vsys": ra_dec_vsys_data,
+                "sbid_to_eval_file": sbid_to_eval_file,
+            },
         }
     except Exception as e:
         logger.error(f"E: {source_identifier}: {e}")
@@ -218,7 +217,12 @@ def prepare_metadata(
 
     query_results_table = query_results["query_results"]
 
-    ra_dec_vsys_data = query_results["ra_dec_vsys"]
+    ra_dec_vsys_data = get_discover_enrichment(
+        query_results,
+        "ra_dec_vsys",
+        expected_type=dict,
+        module_name=PROJECT_NAME,
+    )
     if not include_ra_dec_vsys:
         ra_dec_vsys_data = None
 
@@ -249,7 +253,17 @@ def prepare_metadata(
             sbid_list.append(None)
 
     # Get evaluation files for each unique SBID (if requested)
-    sbid_to_eval_file = query_results["sbid_to_eval_file"] if include_evaluation_files else {}
+    sbid_to_eval_file = (
+        get_discover_enrichment(
+            query_results,
+            "sbid_to_eval_file",
+            default={},
+            expected_type=dict,
+            module_name=PROJECT_NAME,
+        )
+        if include_evaluation_files
+        else {}
+    )
 
     # Scan-id keyed matching from CASDA job results (preferred and deterministic).
     # if data_url_by_scan_id is not None, then we have a scan-id keyed mapping from the CASDA job results.
