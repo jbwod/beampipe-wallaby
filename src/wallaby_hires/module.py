@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_NAME = "wallaby_hires"
 REQUIRED_ADAPTERS = ["casda", "vizier"]
+DISCOVERY_ENRICHMENT_KEYS = ["ra_dec_vsys", "sbid_to_eval_file"]
 
 # Query template for visibility files
 VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{source_identifier}%'"
@@ -212,7 +213,11 @@ def prepare_metadata(
     include_ra_dec_vsys: bool = True,
     adapters: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, bool]]:
-    """Prepare metadata from CASDA query results. Returns (metadata_list, discovery_flags)."""
+    """Prepare metadata from discover bundle.
+
+    include_evaluation_files/include_ra_dec_vsys are wallaby-specific shaping
+    toggles; core does not set them and uses defaults.
+    """
     metadata_list = []
 
     query_results_table = query_results["query_results"]
@@ -321,7 +326,7 @@ def prepare_metadata(
         }
 
         # Add RA/DEC/VSys data if available (same for all datasets from same source)
-        if ra_dec_vsys_data:
+        if isinstance(ra_dec_vsys_data, dict):
             dataset_metadata.update(
                 {
                     "ra_degrees": ra_dec_vsys_data["ra_degrees"],
