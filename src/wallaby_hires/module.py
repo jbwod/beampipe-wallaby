@@ -15,6 +15,12 @@ PROJECT_NAME = "wallaby_hires"
 REQUIRED_ADAPTERS = ["casda", "vizier"]
 DISCOVERY_ENRICHMENT_KEYS = ["ra_dec_vsys", "sbid_to_eval_file"]
 
+MANIFEST_SCHEMA = None 
+
+GRAPH_PATH = None
+
+GRAPH_GITHUB_URL = None
+
 # Query template for visibility files
 VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{source_identifier}%'"
 
