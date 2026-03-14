@@ -15,8 +15,6 @@ PROJECT_NAME = "wallaby_hires"
 REQUIRED_ADAPTERS = ["casda", "vizier"]
 DISCOVERY_ENRICHMENT_KEYS = ["ra_dec_vsys", "sbid_to_eval_file"]
 
-MANIFEST_SCHEMA = None 
-
 GRAPH_PATH = None
 
 GRAPH_GITHUB_URL = None
@@ -110,6 +108,91 @@ def discover(source_identifier: str, adapters: dict[str, Any] | None = None) -> 
 
 def stage(casda_client: Any, query_results: Table) -> tuple[dict[str, str], dict[str, str]]:
     return {}, {}
+
+
+def manifest(
+    metadata_by_source: dict[str, list[dict[str, Any]]],
+    *,
+    staged_urls_by_scan_id: dict[str, str],
+    eval_urls_by_sbid: dict[str, str],
+) -> list[dict[str, Any]]:
+    """
+        source_identifier, ra_string, dec_string, vsys, datasets[]
+    """
+    sources: list[dict[str, Any]] = []
+
+    for source_identifier, records in metadata_by_source.items():
+        all_datasets: list[dict[str, Any]] = []
+        ra_string = ""
+        dec_string = ""
+        vsys = None
+
+        for rec in records:
+            meta = rec.get("metadata_json") or {}
+            datasets = meta.get("datasets") or []
+            for ds in datasets:
+                sbid = str(ds.get("sbid") or "")
+                scan_id = str(ds.get("scan_id") or sbid)
+                name = ds.get("name") or ds.get("dataset_id") or ds.get("visibility_filename") or ""
+                staged_url = (
+                    staged_urls_by_scan_id.get(scan_id)
+                    or ds.get("staged_url")
+                    or staged_urls_by_scan_id.get(sbid)
+                )
+                evaluation_file = ds.get("evaluation_file") or ""
+                evaluation_file_url = (
+                    eval_urls_by_sbid.get(sbid) or ds.get("evaluation_file_url") or ""
+                )
+                if not ra_string and ds.get("ra_string"):
+                    ra_string = str(ds["ra_string"])
+                if not dec_string and ds.get("dec_string"):
+                    dec_string = str(ds["dec_string"])
+                if vsys is None and ds.get("vsys") is not None:
+                    vsys = ds["vsys"]
+                all_datasets.append({
+                    "name": name,
+                    "staged_url": staged_url or "",
+                    "evaluation_file": evaluation_file,
+                    "evaluation_file_url": evaluation_file_url,
+                })
+            flags = meta.get("discovery_flags") or {}
+            if not ra_string and flags.get("ra_string"):
+                ra_string = str(flags["ra_string"])
+            if not dec_string and flags.get("dec_string"):
+                dec_string = str(flags["dec_string"])
+            if vsys is None and flags.get("vsys") is not None:
+                vsys = flags["vsys"]
+
+        if all_datasets:
+            sources.append({
+                "source_identifier": source_identifier,
+                "ra_string": ra_string,
+                "dec_string": dec_string,
+                "vsys": vsys,
+                "datasets": all_datasets,
+            })
+
+    return sources
+
+# expected format:
+# [
+#     {
+#         "source_identifier": ...,
+#         "ra_string": ...,
+#         "dec_string": ...,
+#         "vsys": ...,
+#         "datasets": [
+#             {
+#                 "name": ...,
+#                 "staged_url": ...,
+#                 "evaluation_file": ...,
+#                 "evaluation_file_url": ...,
+#             },
+#             ...
+#         ]
+#     },
+#     ...
+# ]
 
 
 def query_ra_dec_vsys(
