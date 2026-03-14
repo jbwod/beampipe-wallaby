@@ -132,7 +132,10 @@ def manifest(
             datasets = meta.get("datasets") or []
             for ds in datasets:
                 sbid = str(ds.get("sbid") or "")
-                scan_id = str(ds.get("scan_id") or sbid)
+                scan_id = ds.get("scan_id")
+                if scan_id is None and ds.get("obs_publisher_did"):
+                    scan_id = _extract_scan_id(str(ds["obs_publisher_did"]))
+                scan_id = str(scan_id or sbid)
                 name = ds.get("name") or ds.get("dataset_id") or ds.get("visibility_filename") or ""
                 staged_url = (
                     staged_urls_by_scan_id.get(scan_id)
