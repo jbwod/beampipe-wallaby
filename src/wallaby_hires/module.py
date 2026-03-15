@@ -83,14 +83,14 @@ def discover(source_identifier: str, adapters: dict[str, Any] | None = None) -> 
             else:
                 sbid_list.append(None)
 
-        sbid_to_eval_file: dict[int, str] = {}
+        sbid_to_eval_file: dict[int, dict[str, str]] = {}
         unique_sbids = {sbid for sbid in sbid_list if sbid is not None}
         logger.info(f"Querying evaluation files for {len(unique_sbids)} unique SBIDs...")
         for sbid in unique_sbids:
-            eval_file = get_evaluation_file_for_sbid(sbid, adapters=adapters)
-            if eval_file:
-                sbid_to_eval_file[sbid] = eval_file
-                logger.info(f"SBID {sbid}: evaluation file = {eval_file}")
+            eval_info = get_evaluation_file_for_sbid(sbid, adapters=adapters)
+            if eval_info:
+                sbid_to_eval_file[sbid] = eval_info
+                logger.info(f"SBID {sbid}: evaluation file = {eval_info['filename']}")
             else:
                 logger.warning(f"No evaluation file found for SBID {sbid}")
 
@@ -140,7 +140,10 @@ def manifest(
                 )
                 evaluation_file = ds.get("evaluation_file") or ""
                 evaluation_file_url = (
-                    eval_urls_by_sbid.get(sbid) or ds.get("evaluation_file_url") or ""
+                    eval_urls_by_sbid.get(sbid)
+                    or ds.get("evaluation_file_url")
+                    or ds.get("evaluation_file_access_url")
+                    or ""
                 )
                 if not ra_string and ds.get("ra_string"):
                     ra_string = str(ds["ra_string"])
@@ -274,19 +277,43 @@ def query_sbid_evaluation(sbid: int, adapters: dict[str, Any] | None = None) -> 
 
 def get_evaluation_file_for_sbid(
     sbid: int, adapters: dict[str, Any] | None = None
-) -> Optional[str]:
-    """Get the evaluation file for a given SBID (largest file by size)."""
+) -> Optional[dict[str, str]]:
+    """Get the evaluation file for a given SBID.
+
+    Prefers format='calibration' (calibration-metadata-processing-logs) for workflow
+    linmos.primarybeam.ASKAP_PB.image. Falls back to largest by filesize if no calibration.
+
+    Returns dict with 'filename' and 'access_url' (from observation_evaluation_file table).
+    access_url is required for CASDA staging (ID=evaluation-N, not filename).
+    """
     try:
         eval_results = query_sbid_evaluation(sbid, adapters=adapters)
         if len(eval_results) == 0:
             return None
-        if "filename" in eval_results.colnames and "filesize" in eval_results.colnames:
-            largest_file_row = eval_results[eval_results["filesize"].argmax()]
-            return str(largest_file_row["filename"])
-        elif "filename" in eval_results.colnames:
-            return str(eval_results["filename"][0])
-        else:
+        if "filename" not in eval_results.colnames:
             return None
+
+        # Simply return the largest calibration file (by filesize)
+        if "format" in eval_results.colnames:
+            calib_mask = [
+                str(r).lower() == "calibration" for r in eval_results["format"]
+            ]
+            if any(calib_mask):
+                calib_rows = eval_results[calib_mask]
+                if len(calib_rows) == 0:
+                    return None
+                if "filesize" in calib_rows.colnames:
+                    row = calib_rows[calib_rows["filesize"].argmax()]
+                else:
+                    row = calib_rows[0]
+                filename = str(row["filename"])
+                access_url = (
+                    str(row["access_url"])
+                    if "access_url" in calib_rows.colnames and row["access_url"]
+                    else None
+                )
+                return {"filename": filename, "access_url": access_url}
+        return None
     except Exception as e:
         logger.warning(f"Error querying evaluation file for SBID {sbid}: {e}")
         return None
@@ -401,6 +428,13 @@ def prepare_metadata(
         #             )
         staged_url = ""
         checksum_url = ""
+        eval_info = sbid_to_eval_file.get(sbid) if sbid and include_evaluation_files else None
+        evaluation_file = (
+            eval_info["filename"] if isinstance(eval_info, dict) else eval_info
+        ) if eval_info else None
+        evaluation_file_access_url = (
+            eval_info.get("access_url")
+        )
 
         dataset_metadata = {
             "source_identifier": source_identifier,
@@ -410,7 +444,8 @@ def prepare_metadata(
             "obs_id": str(obs_ids[i]) if i < len(obs_ids) else None,
             "staged_url": staged_url,
             "checksum_url": checksum_url,
-            "evaluation_file": sbid_to_eval_file.get(sbid) if sbid and include_evaluation_files else None,
+            "evaluation_file": evaluation_file,
+            "evaluation_file_access_url": evaluation_file_access_url,
         }
 
         # Add RA/DEC/VSys data if available (same for all datasets from same source)
