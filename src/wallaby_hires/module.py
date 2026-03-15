@@ -106,10 +106,6 @@ def discover(source_identifier: str, adapters: dict[str, Any] | None = None) -> 
         raise
 
 
-def stage(casda_client: Any, query_results: Table) -> tuple[dict[str, str], dict[str, str]]:
-    return {}, {}
-
-
 def manifest(
     metadata_by_source: dict[str, list[dict[str, Any]]],
     *,
