@@ -111,14 +111,19 @@ def manifest(
     *,
     staged_urls_by_scan_id: dict[str, str],
     eval_urls_by_sbid: dict[str, str],
+    checksum_urls_by_scan_id: dict[str, str] | None = None,
+    eval_checksum_urls_by_sbid: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """
-        source_identifier, ra_string, dec_string, vsys, datasets[]
+    Build manifest sources with sbids[].datasets structure.
+    Each sbid has evaluation_file, evaluation_file_url, and datasets (visibility files with staged_url, checksum_url).
     """
+    checksums = checksum_urls_by_scan_id or {}
+    eval_checksums = eval_checksum_urls_by_sbid or {}
     sources: list[dict[str, Any]] = []
 
     for source_identifier, records in metadata_by_source.items():
-        all_datasets: list[dict[str, Any]] = []
+        sbid_groups: dict[str, dict[str, Any]] = {}
         ra_string = ""
         dec_string = ""
         vsys = None
@@ -138,6 +143,7 @@ def manifest(
                     or ds.get("staged_url")
                     or staged_urls_by_scan_id.get(sbid)
                 )
+                checksum_url = checksums.get(scan_id) or checksums.get(sbid) or ""
                 evaluation_file = ds.get("evaluation_file") or ""
                 evaluation_file_url = (
                     eval_urls_by_sbid.get(sbid)
@@ -145,17 +151,26 @@ def manifest(
                     or ds.get("evaluation_file_access_url")
                     or ""
                 )
+                evaluation_file_checksum_url = eval_checksums.get(sbid) or ""
                 if not ra_string and ds.get("ra_string"):
                     ra_string = str(ds["ra_string"])
                 if not dec_string and ds.get("dec_string"):
                     dec_string = str(ds["dec_string"])
                 if vsys is None and ds.get("vsys") is not None:
                     vsys = ds["vsys"]
-                all_datasets.append({
+
+                if sbid not in sbid_groups:
+                    sbid_groups[sbid] = {
+                        "sbid": sbid,
+                        "evaluation_file": evaluation_file,
+                        "evaluation_file_url": evaluation_file_url,
+                        "evaluation_file_checksum_url": evaluation_file_checksum_url,
+                        "datasets": [],
+                    }
+                sbid_groups[sbid]["datasets"].append({
                     "name": name,
                     "staged_url": staged_url or "",
-                    "evaluation_file": evaluation_file,
-                    "evaluation_file_url": evaluation_file_url,
+                    "checksum_url": checksum_url,
                 })
             flags = meta.get("discovery_flags") or {}
             if not ra_string and flags.get("ra_string"):
@@ -165,13 +180,13 @@ def manifest(
             if vsys is None and flags.get("vsys") is not None:
                 vsys = flags["vsys"]
 
-        if all_datasets:
+        if sbid_groups:
             sources.append({
                 "source_identifier": source_identifier,
                 "ra_string": ra_string,
                 "dec_string": dec_string,
                 "vsys": vsys,
-                "datasets": all_datasets,
+                "sbids": list(sbid_groups.values()),
             })
 
     return sources
