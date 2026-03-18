@@ -26,8 +26,14 @@ VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{so
 SBID_EVALUATION_QUERY_TEMPLATE = "SELECT * FROM casda.observation_evaluation_file WHERE sbid = '{sbid}'"
 
 # Query template for RA, DEC, VSys from Vizier HIPASS catalog
+# Old table (J/AJ/128/16/table2):
+# RA_DEC_VSYS_QUERY_TEMPLATE = (
+#     'SELECT RAJ2000, DEJ2000, VSys FROM "J/AJ/128/16/table2" WHERE HIPASS LIKE \'{source_name}\''
+# )
+# New table (VIII/73/hicat): HIPASS, RAJ2000, DEJ2000, RV50max, RV50min, RVmom, vsys_50_est
 RA_DEC_VSYS_QUERY_TEMPLATE = (
-    'SELECT RAJ2000, DEJ2000, VSys FROM "J/AJ/128/16/table2" WHERE HIPASS LIKE \'{source_name}\''
+    'SELECT HIPASS, RAJ2000, DEJ2000, RV50max, RV50min, RVmom '
+    'FROM "VIII/73/hicat" WHERE HIPASS = \'{source_name}\''
 )
 
 
@@ -251,7 +257,8 @@ def query_ra_dec_vsys(
         # Extract values and convert NumPy types to native Python types
         ra_deg = to_python_value(results["RAJ2000"][0])
         dec_deg = to_python_value(results["DEJ2000"][0])
-        vsys = to_python_value(results["VSys"][0])
+        # New table (VIII/73/hicat) uses vsys_50_est; old table used VSys
+        vsys = to_python_value(results["RVmom"][0])
 
         logger.info(f"Retrieved RA={ra_deg}, DEC={dec_deg}, VSys={vsys} for {source_identifier}")
         ra_h, ra_m, ra_s = degrees_to_hms(ra_deg)
