@@ -17,7 +17,7 @@ DISCOVERY_ENRICHMENT_KEYS = ["ra_dec_vsys", "sbid_to_eval_file"]
 
 GRAPH_PATH = None
 
-GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/beampipe-core/refs/heads/issue/8-fr-smart-workflow-execution-and-daliuge-integration/src/app/core/orchestration/test_graphs/test-manifest.graph"
+GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/beampipe-core/issue/8-fr-smart-workflow-execution-and-daliuge-integration/src/app/core/orchestration/test_graphs/test-manifest.graph"
 
 # Query template for visibility files
 VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{source_identifier}%'"
