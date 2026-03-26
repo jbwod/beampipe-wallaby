@@ -11,30 +11,45 @@ from app.core.utils.astro import degrees_to_dms, degrees_to_hms, to_python_value
 
 logger = logging.getLogger(__name__)
 
+########### CONFIGURATION ####################
 PROJECT_NAME = "wallaby_hires"
+########### Orchestration ####################
+GRAPH_PATH = None
+GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/beampipe-core/issue/8-fr-smart-workflow-execution-and-daliuge-integration/src/app/core/orchestration/test_graphs/test-manifest.graph"
+
+WORKFLOW_RUN_AUTOMATION = {
+  "enabled": True,
+  "archive_name": "casda",
+  "max_sources_per_run": 50,
+  "max_sources_per_tick": 200,
+  "max_runs_per_tick": 4,
+  "min_sources_to_trigger": 10,
+  "max_wait_minutes": 1440,
+  "claim_ttl_minutes": 180,
+  # "execution_profile_id": "550e8400-e29b-41d4-a716-446655440000",
+}
+
+############ Discovery & Enrichment ############
 REQUIRED_ADAPTERS = ["casda", "vizier"]
 DISCOVERY_ENRICHMENT_KEYS = ["ra_dec_vsys", "sbid_to_eval_file"]
 
-GRAPH_PATH = None
-
-GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/beampipe-core/issue/8-fr-smart-workflow-execution-and-daliuge-integration/src/app/core/orchestration/test_graphs/test-manifest.graph"
-
-# Query template for visibility files
+########### Project Queries ####################
 VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{source_identifier}%'"
 
 # Query template for finding eval files by SBID
 SBID_EVALUATION_QUERY_TEMPLATE = "SELECT * FROM casda.observation_evaluation_file WHERE sbid = '{sbid}'"
 
+RA_DEC_VSYS_QUERY_TEMPLATE = (
+    'SELECT HIPASS, RAJ2000, DEJ2000, RV50max, RV50min, RVmom '
+    'FROM "VIII/73/hicat" WHERE HIPASS = \'{source_name}\''
+)
 # Query template for RA, DEC, VSys from Vizier HIPASS catalog
 # Old table (J/AJ/128/16/table2):
 # RA_DEC_VSYS_QUERY_TEMPLATE = (
 #     'SELECT RAJ2000, DEJ2000, VSys FROM "J/AJ/128/16/table2" WHERE HIPASS LIKE \'{source_name}\''
 # )
 # New table (VIII/73/hicat): HIPASS, RAJ2000, DEJ2000, RV50max, RV50min, RVmom, vsys_50_est
-RA_DEC_VSYS_QUERY_TEMPLATE = (
-    'SELECT HIPASS, RAJ2000, DEJ2000, RV50max, RV50min, RVmom '
-    'FROM "VIII/73/hicat" WHERE HIPASS = \'{source_name}\''
-)
+
 
 
 def ping() -> None:
