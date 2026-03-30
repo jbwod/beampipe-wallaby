@@ -23,7 +23,7 @@ WORKFLOW_RUN_AUTOMATION = {
   "max_sources_per_run": 50,
   "max_sources_per_tick": 200,
   "max_runs_per_tick": 4,
-  "min_sources_to_trigger": 10,
+  "min_sources_to_trigger": 1,
   "max_wait_minutes": 1440,
   "claim_ttl_minutes": 180,
   # "execution_profile_id": "550e8400-e29b-41d4-a716-446655440000",
