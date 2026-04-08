@@ -15,18 +15,21 @@ logger = logging.getLogger(__name__)
 PROJECT_NAME = "wallaby_hires"
 ########### Orchestration ####################
 GRAPH_PATH = None
-GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/beampipe-core/issue/8-fr-smart-workflow-execution-and-daliuge-integration/src/app/core/orchestration/test_graphs/test-manifest.graph"
+GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/beampipe-core/issue/8-fr-smart-workflow-execution-and-daliuge-integration/src/app/core/orchestration/dev/test_graphs/test-manifest.graph"
 
-WORKFLOW_RUN_AUTOMATION = {
-  "enabled": True,
+WORKFLOW_EXECUTION_AUTOMATION = {
+  "enabled": False,
   "archive_name": "casda",
-  "max_sources_per_run": 50,
+  "max_sources_per_execution": 20,
   "max_sources_per_tick": 200,
-  "max_runs_per_tick": 4,
+  "max_executions_per_tick": 4,
   "min_sources_to_trigger": 1,
   "max_wait_minutes": 1440,
   "claim_ttl_minutes": 180,
-  # "execution_profile_id": "550e8400-e29b-41d4-a716-446655440000",
+  "execution_max_duration_minutes_external": 90,
+  "execution_poll_max_duration_minutes": 30,
+  "execution_max_polls": 12,
+  # "deployment_profile": "teste2e",
 }
 
 ############ Discovery & Enrichment ############
