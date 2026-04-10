@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 PROJECT_NAME = "wallaby_hires"
 ########### Orchestration ####################
 GRAPH_PATH = None
-GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/beampipe-core/issue/8-fr-smart-workflow-execution-and-daliuge-integration/src/app/core/orchestration/dev/test_graphs/test-manifest.graph"
+GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/wallaby-hires-beampipe/refs/heads/main/dlg-graphs/wallaby-hires_test-pipeline-nodownloads-beampipe.graph"
 
 WORKFLOW_EXECUTION_AUTOMATION = {
   "enabled": False,
