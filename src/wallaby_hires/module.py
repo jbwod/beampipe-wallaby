@@ -1,12 +1,12 @@
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 from astropy.table import Table
 
 from app.core.archive.adapters import get_adapter, list_adapter_names
-from app.core.projects.contracts import DiscoverBundle, get_discover_enrichment
 from app.core.archive.adapters.casda import _extract_scan_id
+from app.core.projects.contracts import DiscoverBundle, get_discover_enrichment
 from app.core.utils.astro import degrees_to_dms, degrees_to_hms, to_python_value
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,10 @@ WORKFLOW_EXECUTION_AUTOMATION = {
   "execution_max_duration_minutes_external": 90,
   # "execution_max_attempts_db": 10,
   # "execution_max_duration_minutes_db": 15,
-  "execution_poll_max_duration_minutes": 30,
-  "execution_max_polls": 12,
+  "execution_poll_step_max_duration_minutes": 30,
+  "execution_poll_step_max_attempts": 12,
+  # "execution_rest_remote_poll_max_rounds": 240,
+  # "execution_slurm_remote_poll_max_rounds": 480,
   # "execution_initial_retry_seconds": 2.0,
   # "execution_max_retry_interval_seconds": 120.0,
   # "deployment_profile_name": "teste2e",
@@ -256,12 +258,35 @@ def manifest(
 #     },
 #     ...
 # ]
+SCATTER_GRAPH_NODE_NAME = "Scatter/GenericScatterApp/Beam"
 
+
+def graph_overrides_from_sources(sources: list[dict[str, Any]]) -> dict[str, Any]:
+    total = sum(
+        len(sb.get("datasets") or [])
+        for s in sources
+        if isinstance(s, dict)
+        for sb in (s.get("sbids") or [])
+        if isinstance(sb, dict)
+    )
+    if total <= 0:
+        return {}
+    return {
+        "graph_overrides": {
+            "version": 1,
+            "patches": [
+                {
+                    "match": {"kind": "node_name", "equals": SCATTER_GRAPH_NODE_NAME},
+                    "fields": [{"name": "num_of_copies", "value": total}],
+                }
+            ],
+        }
+    }
 
 def query_ra_dec_vsys(
     source_identifier: str,
     adapters: dict[str, Any] | None = None,
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Query Vizier TAP for RA, DEC, and VSys from HIPASS catalog.
     
     (tap_query_RA_DEC_VSYS)
@@ -339,7 +364,7 @@ def query_sbid_evaluation(sbid: int, adapters: dict[str, Any] | None = None) -> 
 
 def get_evaluation_file_for_sbid(
     sbid: int, adapters: dict[str, Any] | None = None
-) -> Optional[dict[str, str]]:
+) -> dict[str, str] | None:
     """Get the evaluation file for a given SBID.
 
     Prefers format='calibration' (calibration-metadata-processing-logs) for workflow
