@@ -15,29 +15,29 @@ logger = logging.getLogger(__name__)
 PROJECT_NAME = "wallaby_hires"
 ########### Orchestration ####################
 GRAPH_PATH = None
-GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/wallaby-hires-beampipe/refs/heads/main/dlg-graphs/wallaby-hires_test-pipeline-nodownloads-beampipe.graph"
+GRAPH_GITHUB_URL = "https://raw.githubusercontent.com/jbwod/wallaby-hires-beampipe/refs/heads/main/dlg-graphs/wallaby-hires_deploy-setonix-beampipe.graph"
 
 WORKFLOW_EXECUTION_AUTOMATION = {
-  "enabled": False,
+  "enabled": True,
   "archive_name": "casda",
-  "max_sources_per_execution": 20,
+  "max_sources_per_execution": 1,
   "tick_execution_source_limit": 200,
   "tick_execution_run_limit": 4,
   "min_sources_to_trigger": 1,
   "max_wait_minutes": 1440,
   "claim_ttl_minutes": 180,
-  # "concurrent_execution_run_limit": 2,
-  "execution_max_attempts_external": 3,
+  "concurrent_execution_run_limit": 5,
+  "execution_max_attempts_external": 1,
   "execution_max_duration_minutes_external": 90,
   # "execution_max_attempts_db": 10,
   # "execution_max_duration_minutes_db": 15,
   "execution_poll_step_max_duration_minutes": 30,
   "execution_poll_step_max_attempts": 12,
   # "execution_rest_remote_poll_max_rounds": 240,
-  # "execution_slurm_remote_poll_max_rounds": 480,
+  "execution_slurm_remote_poll_max_rounds": 480,
   # "execution_initial_retry_seconds": 2.0,
   # "execution_max_retry_interval_seconds": 120.0,
-  # "deployment_profile_name": "teste2e",
+  "deployment_profile_name": "slurm-remote",
 }
 
 WORKFLOW_DISCOVERY_AUTOMATION = {
@@ -61,7 +61,18 @@ REQUIRED_ADAPTERS = ["casda", "vizier"]
 DISCOVERY_ENRICHMENT_KEYS = ["ra_dec_vsys", "sbid_to_eval_file"]
 
 ########### Project Queries ####################
-VISIBILITY_QUERY_TEMPLATE = "SELECT * FROM ivoa.obscore WHERE filename LIKE '{source_identifier}%'"
+# AS102/AS202 - latest visibility
+# ASKAP Pilot Survey for WALLABY / WALLABY
+VISIBILITY_QUERY_TEMPLATE = (
+    "SELECT o.* FROM ivoa.obscore o "
+    "INNER JOIN ("
+    "SELECT MAX(t_max) AS mx FROM ivoa.obscore "
+    "WHERE filename LIKE '{source_identifier}%' "
+    "AND obs_collection IN ('ASKAP Pilot Survey for WALLABY', 'WALLABY')"
+    ") AS latest ON o.t_max = latest.mx "
+    "WHERE o.filename LIKE '{source_identifier}%' "
+    "AND o.obs_collection IN ('ASKAP Pilot Survey for WALLABY', 'WALLABY')"
+)
 
 # Query template for finding eval files by SBID
 SBID_EVALUATION_QUERY_TEMPLATE = "SELECT * FROM casda.observation_evaluation_file WHERE sbid = '{sbid}'"
@@ -76,7 +87,6 @@ RA_DEC_VSYS_QUERY_TEMPLATE = (
 #     'SELECT RAJ2000, DEJ2000, VSys FROM "J/AJ/128/16/table2" WHERE HIPASS LIKE \'{source_name}\''
 # )
 # New table (VIII/73/hicat): HIPASS, RAJ2000, DEJ2000, RV50max, RV50min, RVmom, vsys_50_est
-
 
 
 def ping() -> None:
@@ -99,7 +109,8 @@ def _query_with_adapter(
 
 
 def discover(source_identifier: str, adapters: dict[str, Any] | None = None) -> DiscoverBundle:
-    query = VISIBILITY_QUERY_TEMPLATE.format(source_identifier=source_identifier)
+    safe_id = source_identifier.replace("'", "''")
+    query = VISIBILITY_QUERY_TEMPLATE.format(source_identifier=safe_id)
     logger.info(f"Q: {source_identifier}")
     try:
         query_results = _query_with_adapter(

@@ -359,6 +359,17 @@ def parset_mixing(static_parset: dict, dynamic_parset: list, prefix: str = "") -
         Binary encoded combined parset.
     """
 
+    if dynamic_parset is None:
+        raise TypeError(
+            "dynamic_parset is None (upstream data missing): often caused by METIS "
+            "partitioning Scatter subgraphs away from their inputs. Align translation "
+            "num_par/num_islands with Scatter num_of_copies (see exampleprofile.json)."
+        )
+    if static_parset is None:
+        raise TypeError(
+            "static_parset is None: upstream static template missing for parset_mixing."
+        )
+
     for item in dynamic_parset:
         for key, value in item.items():
             if prefix:
